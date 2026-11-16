@@ -1,37 +1,18 @@
 import os
 import logging
+import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
-import requests
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from dotenv import load_dotenv
+from app.db import get_db_connection
 
-# ហៅទាញយកតម្លៃពីဖိုင် .env
-load_dotenv()
+logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-# Supabase Database Configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Khmer Topup API Configuration
 KHMER_TOPUP_BASE_URL = os.getenv("KHMER_TOPUP_BASE_URL", "https://khmer-topup.com/api/v1")
 KHMER_TOPUP_API_KEY = os.getenv("KHMER_TOPUP_API_KEY")
 
-# កែសម្រួលត្រង់ចំណុចនេះឱ្យត្រូវស្តង់ដារ Python
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-
-# ទិន្នន័យបណ្តោះអាសន្នសម្រាប់តាមដានការជ្រើសរើសរបស់អតិថិជន
 user_selection = {}
 
-# ពាក្យបញ្ជា /start ជាមួយ Inline Button ជ្រើសរើសហ្គេម
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🎮 Mobile Legends (MLBB)", callback_data="game_mlbb")],
@@ -39,14 +20,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎮 Free Fire", callback_data="game_ff")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await update.message.reply_text(
-        "👋 សួស្តី! សូមស្វាគមន៍មកកាន់ប្រព័ន្ធបំពេញទឹកប្រាក់ហ្គេមស្វ័យប្រវត្ត (GameZone Topup)។\n\n"
+        "👋 សួស្តី! សូមស្វាគមន៍មកកាន់ប្រព័ន្ធបំពេញទឹកប្រាក់ហ្គេមស្វ័យប្រវត្ត (GameZone Topup)。\n\n"
         "👇 សូមជ្រើសរើសហ្គេមដែលអ្នកចង់បំពេញ៖",
         reply_markup=reply_markup
     )
 
-# គ្រប់គ្រងការចុចលើ Inline Keyboard
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -77,7 +56,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_selection[user_id]["step"] = "wait_for_userid"
         
         await query.edit_message_text(
-            text="✍️ សូមផ្ញើលេខ **User ID** (និង Zone ID បើមាន) របស់អ្នកមកទីនេះជាអត្ថបទ។\n\nឧទាហរណ៍៖ `12345678 (1234)`",
+            text="✍️ សូមផ្ញើលេខ **User ID** (និង Zone ID បើមាន) របស់អ្នកមកទីនេះជាអត្ថបទ。\n\nឧទាហរណ៍៖ `12345678 (1234)`",
             parse_mode="Markdown"
         )
 
@@ -96,12 +75,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
 
             try:
-                # 1. បាញ់សំណើទៅ Khmer Topup API Endpoint (/order)
                 order_api_url = f"{KHMER_TOPUP_BASE_URL}/order"
                 response = requests.post(order_api_url, json=payload)
                 res_data = response.json()
 
-                # 2. រក្សាទុកចូល Supabase Table `orders`
                 conn = get_db_connection()
                 cur = conn.cursor()
                 cur.execute(
@@ -138,7 +115,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="👇 សូមជ្រើសរើសហ្គេមដែលអ្នកចង់បំពេញទឹកប្រាក់៖", reply_markup=reply_markup)
 
-# ទទួល User ID ជាអត្ថបទ និងផ្ទៀងផ្ទាត់មុនបញ្ជូន
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text.strip()
@@ -146,7 +122,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in user_selection and user_selection[user_id].get("step") == "wait_for_userid":
         user_selection[user_id]["game_user_id"] = text
         game_id = user_selection[user_id]["game_id"]
-        
         ign_name = "RinGaming (គំរូឈ្មោះ)"
 
         keyboard = [
@@ -167,12 +142,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("⚠️ សូមចាប់ផ្តើមជាថ្មីដោយវាយពាក្យបញ្ជា `/start` ។")
 
-if __name__ == '__main__':
+def create_bot_app():
+    """បង្កើតនិង Return Telegram Application object"""
+    if not TELEGRAM_BOT_TOKEN:
+        logger.error("BOT_TOKEN is missing!")
+        return None
+        
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-
-    print("🤖 GameZone Topup Telegram Bot is running...")
-    app.run_polling()
+    return app
