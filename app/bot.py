@@ -8,18 +8,16 @@ from app.db import get_db_connection
 logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-# ดึง URL និង API Key ពី Environment Variables របស់ Render
-KHMER_TOPUP_API_URL = os.getenv("KHMER_TOPUP_API_URL", "https://khmer-topup.com/api/v1/order")
+KHMER_TOPUP_BASE_URL = os.getenv("KHMER_TOPUP_BASE_URL", "https://khmer-topup.com/api/v1")
 KHMER_TOPUP_API_KEY = os.getenv("KHMER_TOPUP_API_KEY")
 
 user_selection = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("🎮 Mobile Legends (MLBB)", callback_data="game_mlbb")],
-        [InlineKeyboardButton("🎮 PUBG Mobile", callback_data="game_pubg")],
-        [InlineKeyboardButton("🎮 Free Fire", callback_data="game_ff")]
+        [InlineKeyboardButton("🎮 Mobile Legends", callback_data="game_mobile-legends")],
+        [InlineKeyboardButton("🎮 PUBG Mobile", callback_data="game_pubg-mobile")],
+        [InlineKeyboardButton("🎮 Free Fire", callback_data="game_free-fire")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
@@ -36,37 +34,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     if data.startswith("game_"):
-        game_id = data.split("_")[1]
-        user_selection[user_id] = {"game_id": game_id, "step": "choose_product"}
+        game_slug = data.split("_")[1]
+        user_selection[user_id] = {"slug": game_slug, "step": "choose_product"}
         
+        # គំរូ Package ID យោងតាម Docs (អាចហៅពី /games មកបង្ហាញបាន បើចង់បានស្វ័យប្រវត្ត)
         keyboard = [
-            [InlineKeyboardButton("💎 86 Diamonds ($1.00)", callback_data="prod_86_diamonds")],
-            [InlineKeyboardButton("💎 172 Diamonds ($2.00)", callback_data="prod_172_diamonds")],
+            [InlineKeyboardButton("💎 55 Diamonds ($0.78)", callback_data="prod_268")],
             [InlineKeyboardButton("🔙 ត្រឡប់ក្រោយ", callback_data="back_to_games")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            text=f"📦 អ្នកបានជ្រើសរើសហ្គេម៖ **{game_id.upper()}**\n\n👇 សូមជ្រើសរើសកញ្ចប់ទឹកប្រាក់៖", 
+            text=f"📦 អ្នកបានជ្រើសរើសហ្គេម៖ **{game_slug.upper()}**\n\n👇 សូមជ្រើសរើសកញ្ចប់ទឹកប្រាក់៖", 
             reply_markup=reply_markup, 
             parse_mode="Markdown"
         )
 
     elif data.startswith("prod_"):
-        product_code = data.replace("prod_", "")
+        package_id = int(data.replace("prod_", ""))
         if user_id in user_selection:
-            user_selection[user_id]["product_code"] = product_code
+            user_selection[user_id]["package_id"] = package_id
             user_selection[user_id]["step"] = "wait_for_userid"
         
         await query.edit_message_text(
-            text="✍️ សូមផ្ញើលេខ **User ID** (និង Zone ID បើមាន) របស់អ្នកមកទីនេះជាអត្ថបទ。\n\nឧទាហរណ៍៖ `12345678 (1234)`",
+            text="✍️ សូមផ្ញើលេខ **User ID** របស់អ្នកមកទីនេះជាអត្ថបទ (ឧ. `12345678`)៖",
             parse_mode="Markdown"
         )
 
     elif data == "back_to_games":
         keyboard = [
-            [InlineKeyboardButton("🎮 Mobile Legends (MLBB)", callback_data="game_mlbb")],
-            [InlineKeyboardButton("🎮 PUBG Mobile", callback_data="game_pubg")],
-            [InlineKeyboardButton("🎮 Free Fire", callback_data="game_ff")]
+            [InlineKeyboardButton("🎮 Mobile Legends", callback_data="game_mobile-legends")],
+            [InlineKeyboardButton("🎮 PUBG Mobile", callback_data="game_pubg-mobile")],
+            [InlineKeyboardButton("🎮 Free Fire", callback_data="game_free-fire")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="👇 សូមជ្រើសរើសហ្គេមដែលអ្នកចង់បំពេញទឹកប្រាក់៖", reply_markup=reply_markup)
@@ -76,24 +74,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
     if user_id in user_selection and user_selection[user_id].get("step") == "wait_for_userid":
-        user_selection[user_id]["game_user_id"] = text
         sel = user_selection[user_id]
-        game_id = sel["game_id"]
-        product_code = sel["product_code"]
+        package_id = sel["package_id"]
+        player_id = text
 
+        # ត្រៀម Payload ផ្ញើទៅកាន់ Endpoint /orders តាម Docs ផ្លូវការ
         payload = {
-            "api_key": KHMER_TOPUP_API_KEY,
-            "game_id": game_id,
-            "user_id": text,
-            "product_code": product_code
+            "package_id": package_id,
+            "player_id": player_id,
+            "server_id": "1234", # អាចកែសម្រួលសួរយក Zone ID បន្ថែមបើហ្គេមនោះទាមទារ
+            "reference": f"order-{user_id}-{int(requests.utils.datetime.datetime.now().timestamp())}"
+        }
+
+        headers = {
+            "Authorization": f"Bearer {KHMER_TOPUP_API_KEY}",
+            "Content-Type": "application/json"
         }
 
         try:
-            # ផ្ញើសំណើទៅកាន់ API Endpoint ដែលបានកំណត់
-            response = requests.post(KHMER_TOPUP_API_URL, json=payload)
+            order_api_url = f"{KHMER_TOPUP_BASE_URL}/orders"
+            response = requests.post(order_api_url, json=payload, headers=headers)
             res_data = response.json()
 
-            # រក្សាទុកចូល Supabase
+            # រក្សាទុកចូល Supabase Table orders
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute(
@@ -101,14 +104,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 INSERT INTO orders (game_id, user_id, product_code, status, response_data)
                 VALUES (%s, %s, %s, %s, %s)
                 """,
-                (game_id, text, product_code, "pending", str(res_data))
+                (sel["slug"], player_id, str(package_id), res_data.get("status", "pending"), str(res_data))
             )
             conn.commit()
             cur.close()
             conn.close()
 
             await update.message.reply_text(
-                f"✅ ការបញ្ជាទិញបានបញ្ជូនទៅកាន់ប្រព័ន្ធដោយជោគជ័យ!\n\nព័ត៌មានលម្អិត៖\n```json\n{res_data}\n```", 
+                f"✅ ការបញ្ជាទិញបានបញ្ជូនទៅកាន់ Khmer Topup ដោយជោគជ័យ!\n\nព័ត៌មានលម្អិត៖\n```json\n{res_data}\n```", 
                 parse_mode="Markdown"
             )
             del user_selection[user_id]
