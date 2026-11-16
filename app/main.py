@@ -25,17 +25,12 @@ def health_check():
 # ចាប់ផ្តើម Database Table ពេល Start App
 init_db()
 
-# បង្កើតនិងរត់ Telegram Bot ក្នុង Background Thread ជាមួយ Event Loop ថ្មី
+# បង្កើតនិងរត់ Telegram Bot ក្នុង Background Thread
 bot_app = create_bot_app()
 if bot_app:
     def run_telegram_bot():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         logger.info("🤖 Starting Telegram Bot polling...")
-        loop.run_until_complete(bot_app.initialize())
-        loop.run_until_complete(bot_app.start())
-        bot_app.updater.start_polling()
-        loop.run_forever()
+        bot_app.run_polling(drop_pending_updates=True)
 
     bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
     bot_thread.start()
