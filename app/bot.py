@@ -28,8 +28,8 @@ logging.getLogger("httpx").setLevel(logging.WARNING)  # កុំអោយ token
 HTML = ParseMode.HTML
 esc = html.escape
 PER_PAGE = 8
-MAX_RETRY = 20          # ចំនួនដងអតិបរមា retry approve (ម្តងក្នុង ~30s)
-TXN_PREFIX = "khpay:"   # txn_id ទុកក្នុង ShopOrder.receipt_file_id (មិនចាំបាច់ migrate)
+MAX_RETRY = 20
+TXN_PREFIX = "khpay:"
 
 STATUS_KM = {
     "awaiting_payment": "⏳ រង់ចាំបង់ប្រាក់",

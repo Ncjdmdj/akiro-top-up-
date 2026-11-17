@@ -1,33 +1,25 @@
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from dotenv import load_dotenv
 
 load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL")
 
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+url = os.environ["DATABASE_URL"]
+if url.startswith("postgres://"):
+    url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+elif url.startswith("postgresql://"):
+    url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+engine = create_engine(url, pool_pre_ping=True, pool_recycle=300)
+SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+
+
+class Base(DeclarativeBase):
+    pass
+
 
 def init_db():
-    """បង្កើត Table orders ប្រសិនបើវាមិនទាន់មាន"""
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS orders (
-                id SERIAL PRIMARY KEY,
-                game_id VARCHAR(50),
-                user_id VARCHAR(100),
-                product_code VARCHAR(100),
-                status VARCHAR(50),
-                response_data TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        conn.commit()
-        cur.close()
-        conn.close()
-        print("✅ Database initialized successfully.")
-    except Exception as e:
-        print(f"❌ Database initialization error: {e}")
+    from app import models  # ចាំបាច់ បើមិនដូច្នេះ create_all មិនបង្កើតតារាង
+    Base.metadata.create_all(engine)
+    print("✅ Database initialized successfully.")
