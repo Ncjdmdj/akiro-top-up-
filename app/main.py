@@ -1,66 +1,26 @@
-import os
 import logging
-import asyncio
 import threading
-from flask import Flask, jsonify
+
 from app.db import init_db
-from app.bot import create_bot_app
+from app.bot import build_bot
+from app.admin import create_admin_app
+from app.config import ADMIN_HOST, ADMIN_PORT
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-app = Flask(__name__, template_folder='../templates')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
-@app.route('/')
-def index():
-    return "🤖 GameZone Topup Bot & Flask Server is running successfully 24/7!"
+def run_web():
+    web = create_admin_app()
+    web.run(host=ADMIN_HOST, port=ADMIN_PORT, debug=False, use_reloader=False)
 
 
-@app.route('/health')
-def health_check():
-    return jsonify({"status": "healthy", "service": "active"})
+def main():
+    init_db()
+    threading.Thread(target=run_web, daemon=True).start()
+    bot = build_bot()
+    bot.run_polling(drop_pending_updates=True)
 
 
-init_db()
-
-_bot_started = False
-_bot_lock = threading.Lock()
-
-
-def run_telegram_bot():
-    # thread នេះគ្មាន event loop ត្រូវបង្កើតថ្មី
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        bot_app = create_bot_app()
-        if not bot_app:
-            logger.error("create_bot_app() returned None (check BOT_TOKEN)")
-            return
-        logger.info("🤖 Starting Telegram Bot polling...")
-        bot_app.run_polling(
-            drop_pending_updates=True,
-            stop_signals=None,   # signal handler ប្រើបានតែ main thread
-            close_loop=False,
-        )
-    except Exception:
-        logger.exception("Telegram bot crashed")
-
-
-def start_bot_once():
-    global _bot_started
-    with _bot_lock:
-        if _bot_started:
-            return
-        _bot_started = True
-    threading.Thread(target=run_telegram_bot, daemon=True).start()
-
-
-start_bot_once()
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == "__main__":
+    main()
