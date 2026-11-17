@@ -18,6 +18,14 @@ def _headers():
 def create_khpay_qr(order_ref, amount):
     if not KHPAY_API_KEY:
         return {"success": False, "message": "KHPAY_API_KEY មិនទាន់ដាក់"}
+    
+    # 🔍 បន្ថែមការ Print ឆែក IP ពេល Render ហៅចេញ
+    try:
+        current_ip = requests.get("https://api.ipify.org", timeout=3).text
+        log.info("CHECK OUTBOUND IP ON RENDER: %s", current_ip)
+    except Exception as ip_err:
+        log.warning("Could not check outbound IP: %s", ip_err)
+
     body = {
         "amount": f"{float(amount):.2f}",
         "currency": "USD",
